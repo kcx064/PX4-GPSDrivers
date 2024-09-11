@@ -892,7 +892,7 @@ int GPSDriverNMEA::receive(unsigned timeout)
 				UnicoreParser::Result result = _unicore_parser.parseChar(buf[i]);
 
 				if (result == UnicoreParser::Result::GotHeading) {
-					++handled;
+					handled+=2;//kcx064
 					_unicore_heading_received_last = gps_absolute_time();
 
 					// Unicore seems to publish heading and standard deviation of 0

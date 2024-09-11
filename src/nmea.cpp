@@ -311,19 +311,11 @@ int GPSDriverNMEA::handleMessage(int len)
 		T "T" for "True"
 		 */
 
-		float heading = 0.f;
+		float heading_deg = 0.f;
 
 		if (bufptr && *(++bufptr) != ',') {
-			heading = strtof(bufptr, &endp); bufptr = endp;
-
-			heading *= M_PI_F / 180.0f; // rad in range [0, 2pi]
-			heading -= _heading_offset; // rad in range [-pi, 3pi]
-
-			if (heading > M_PI_F) {
-				heading -= 2.f * M_PI_F; // rad in range [-pi, pi]
-			}
-
-			_gps_position->heading = heading;
+			heading_deg = strtof(bufptr, &endp); bufptr = endp;
+			handleHeading(heading_deg, NAN);
 		}
 
 		_HEAD_received = true;
@@ -896,6 +888,44 @@ int GPSDriverNMEA::receive(unsigned timeout)
 				if (l > 0) {
 					handled |= handleMessage(l);
 				}
+
+				UnicoreParser::Result result = _unicore_parser.parseChar(buf[i]);
+
+				if (result == UnicoreParser::Result::GotHeading) {
+					++handled;
+					_unicore_heading_received_last = gps_absolute_time();
+
+					// Unicore seems to publish heading and standard deviation of 0
+					// to signal that it has not initialized the heading yet.
+					if (_unicore_parser.heading().heading_stddev_deg > 0.0f) {
+						// Unicore publishes the heading between True North and
+						// the baseline vector from master antenna to slave
+						// antenna.
+						// Assuming that the master is in front and the slave
+						// in the back, this means that we need to flip the
+						// heading 180 degrees.
+
+						handleHeading(
+							_unicore_parser.heading().heading_deg + 180.0f,
+							_unicore_parser.heading().heading_stddev_deg);
+					}
+
+					NMEA_DEBUG("Got heading: %.1f deg, stddev: %.1f deg, baseline: %.2f m\n",
+						   (double)_unicore_parser.heading().heading_deg,
+						   (double)_unicore_parser.heading().heading_stddev_deg,
+						   (double)_unicore_parser.heading().baseline_m);
+
+				} else if (result == UnicoreParser::Result::GotAgrica) {
+					++handled;
+
+					// We don't use anything of that message at this point, however, this
+					// allows to determine whether we are talking to a UM982 and hence
+					// request the heading (UNIHEADINGA) message that we actually require.
+
+					if (gps_absolute_time() - _unicore_heading_received_last > 1000000) {
+						request_unicore_heading_message();
+					}
+				}
 			}
 
 			if (handled > 0) {
@@ -908,6 +938,34 @@ int GPSDriverNMEA::receive(unsigned timeout)
 			return -1;
 		}
 	}
+}
+
+void GPSDriverNMEA::handleHeading(float heading_deg, float heading_stddev_deg)
+{
+	float heading_rad = heading_deg * M_PI_F / 180.0f; // rad in range [0, 2pi]
+	heading_rad -= _heading_offset; // rad in range [-pi, 3pi]
+
+	if (heading_rad > M_PI_F) {
+		heading_rad -= 2.f * M_PI_F; // rad in range [-pi, pi]
+	}
+
+	// We are not publishing heading_offset because it wasn't done in the past,
+	// and the UBX driver doesn't do it either. I'm assuming it would cause the
+	// offset to be applied twice.
+
+	_gps_position->heading = heading_rad;
+
+	const float heading_stddev_rad = heading_stddev_deg * M_PI_F / 180.0f;
+	_gps_position->heading_accuracy = heading_stddev_rad;
+
+	// _gps_position->timestamp = gps_absolute_time();
+}
+
+void GPSDriverNMEA::request_unicore_heading_message()
+{
+	// Configure heading message on serial port at 5 Hz. Don't save it though.
+	uint8_t buf[] = "UNIHEADINGA COM1 0.2\r\n";
+	write(buf, sizeof(buf) - 1);
 }
 
 #define HEXDIGIT_CHAR(d) ((char)((d) + (((d) < 0xA) ? '0' : 'A'-0xA)))
@@ -1024,7 +1082,7 @@ int GPSDriverNMEA::configure(unsigned &baudrate, const GPSConfig &config)
 	}
 
 	// If we haven't found the GPS with the defined baudrate, we try other rates
-	const unsigned baudrates_to_try[] = {9600, 19200, 38400, 57600, 115200};
+	const unsigned baudrates_to_try[] = {9600, 19200, 38400, 57600, 115200, 230400};
 	unsigned test_baudrate;
 
 	for (unsigned int baud_i = 0; !_POS_received

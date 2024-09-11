@@ -40,6 +40,7 @@
 
 #include "femtomes.h"
 #include "rtcm.h"
+#include "crc.h"
 
 
 /* ms, timeout for waiting for a response*/
@@ -395,9 +396,9 @@ int GPSDriverFemto::parseChar(uint8_t temp)
 				_femto_msg.crc += (uint32_t)(temp << 24);
 				_decode_state = FemtoDecodeState::pream_ble1;
 
-				uint32_t crc = calculateBlockCRC32((uint32_t)_femto_msg.header.femto_header.headerlength,
-								   (uint8_t *)&_femto_msg.header.data, (uint32_t)0);
-				crc = calculateBlockCRC32((uint32_t)_femto_msg.header.femto_header.messagelength, (uint8_t *)&_femto_msg.data[0], crc);
+				uint32_t crc = calculateCRC32((uint32_t)_femto_msg.header.femto_header.headerlength,
+							      (uint8_t *)&_femto_msg.header.data, (uint32_t)0);
+				crc = calculateCRC32((uint32_t)_femto_msg.header.femto_header.messagelength, (uint8_t *)&_femto_msg.data[0], crc);
 
 				if (_femto_msg.crc == crc) {
 					iRet = _femto_msg.read;
@@ -648,35 +649,6 @@ int GPSDriverFemto::configure(unsigned &baudrate, const GPSConfig &config)
 	FEMTO_DEBUG("Femto: gps driver configure done")
 
 	return 0;
-}
-
-#define CRC32_POLYNOMIAL 0xEDB88320L
-uint32_t
-GPSDriverFemto::crc32Value(uint32_t icrc)
-{
-	int i;
-	uint32_t crc = icrc;
-
-	for (i = 8 ; i > 0; i--) {
-		if (crc & 1) {
-			crc = (crc >> 1) ^ CRC32_POLYNOMIAL;
-
-		} else {
-			crc >>= 1;
-		}
-	}
-
-	return crc;
-}
-
-uint32_t
-GPSDriverFemto::calculateBlockCRC32(uint32_t length, uint8_t *buffer, uint32_t crc)
-{
-	while (length-- != 0) {
-		crc = ((crc >> 8) & 0x00FFFFFFL) ^ (crc32Value(((uint32_t) crc ^ *buffer++) & 0xff));
-	}
-
-	return (crc);
 }
 
 void GPSDriverFemto::activateCorrectionOutput()

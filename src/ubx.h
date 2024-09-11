@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2012-2018 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2012-2023 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -85,6 +85,7 @@
 #define UBX_ID_NAV_TIMEUTC    0x21
 #define UBX_ID_NAV_SVINFO     0x30
 #define UBX_ID_NAV_SAT        0x35
+#define UBX_ID_NAV_STATUS     0x03
 #define UBX_ID_NAV_SVIN       0x3B
 #define UBX_ID_NAV_RELPOSNED  0x3C
 #define UBX_ID_RXM_SFRBX      0x13
@@ -136,6 +137,7 @@
 #define UBX_MSG_NAV_TIMEUTC   ((UBX_CLASS_NAV) | UBX_ID_NAV_TIMEUTC << 8)
 #define UBX_MSG_NAV_SVINFO    ((UBX_CLASS_NAV) | UBX_ID_NAV_SVINFO << 8)
 #define UBX_MSG_NAV_SAT       ((UBX_CLASS_NAV) | UBX_ID_NAV_SAT << 8)
+#define UBX_MSG_NAV_STATUS    ((UBX_CLASS_NAV) | UBX_ID_NAV_STATUS << 8)
 #define UBX_MSG_NAV_SVIN      ((UBX_CLASS_NAV) | UBX_ID_NAV_SVIN << 8)
 #define UBX_MSG_NAV_RELPOSNED ((UBX_CLASS_NAV) | UBX_ID_NAV_RELPOSNED << 8)
 #define UBX_MSG_RXM_SFRBX     ((UBX_CLASS_RXM) | UBX_ID_RXM_SFRBX << 8)
@@ -172,6 +174,11 @@
 #define UBX_MSG_RTCM3_1127    ((UBX_CLASS_RTCM3) | UBX_ID_RTCM3_1127 << 8)
 #define UBX_MSG_RTCM3_1230    ((UBX_CLASS_RTCM3) | UBX_ID_RTCM3_1230 << 8)
 #define UBX_MSG_RTCM3_4072    ((UBX_CLASS_RTCM3) | UBX_ID_RTCM3_4072 << 8)
+
+/* RX NAV_STATUS message content details */
+/*   Bitfield "flags" masks */
+#define UBX_RX_NAV_STATUS_SPOOFDETSTATE_MASK    0b00011000 /**< spoofDetState (Spoofing detection state) */
+#define UBX_RX_NAV_STATUS_SPOOFDETSTATE_SHIFT   3
 
 /* RX NAV-PVT message content details */
 /*   Bitfield "valid" masks */
@@ -338,6 +345,7 @@
 #define UBX_CFG_KEY_MSGOUT_UBX_MON_RF_I2C        0x20910359
 #define UBX_CFG_KEY_MSGOUT_UBX_NAV_SVIN_I2C      0x20910088
 #define UBX_CFG_KEY_MSGOUT_UBX_NAV_SAT_I2C       0x20910015
+#define UBX_CFG_KEY_MSGOUT_UBX_NAV_STATUS_I2C    0x2091001a
 #define UBX_CFG_KEY_MSGOUT_UBX_NAV_DOP_I2C       0x20910038
 #define UBX_CFG_KEY_MSGOUT_UBX_NAV_PVT_I2C       0x20910006
 #define UBX_CFG_KEY_MSGOUT_UBX_NAV_RELPOSNED_I2C 0x2091008d
@@ -559,6 +567,17 @@ typedef struct {
 	int16_t  prRes;          /**< Pseudo range residual [0.1 m] */
 	uint32_t flags;
 } ubx_payload_rx_nav_sat_part2_t;
+
+/* Rx NAV-STATUS */
+typedef struct {
+	uint32_t iTOW;           /**< GPS Time of Week [ms] */
+	uint8_t  gpsFix;         /**< GPSfix Type, range 0..5 */
+	uint8_t  flags;          /**< Fix Status Flags */
+	uint8_t  fixStat;        /**< Fix Status Information */
+	uint8_t  flags2;         /**< Additional Flags */
+	uint32_t ttff;           /**< Time to first fix [ms] */
+	uint32_t msss;           /**< Milliseconds since startup/reset */
+} ubx_payload_rx_nav_status_t;
 
 /* Rx NAV-SVIN (survey-in info) */
 typedef struct {
@@ -849,6 +868,7 @@ typedef union {
 	ubx_payload_rx_nav_svinfo_part2_t payload_rx_nav_svinfo_part2;
 	ubx_payload_rx_nav_sat_part1_t    payload_rx_nav_sat_part1;
 	ubx_payload_rx_nav_sat_part2_t    payload_rx_nav_sat_part2;
+	ubx_payload_rx_nav_status_t       payload_rx_nav_status;
 	ubx_payload_rx_nav_svin_t         payload_rx_nav_svin;
 	ubx_payload_rx_nav_velned_t       payload_rx_nav_velned;
 	ubx_payload_rx_mon_hw_ubx6_t      payload_rx_mon_hw_ubx6;
@@ -914,12 +934,14 @@ public:
 		MovingBase,                ///< RTCM output on UART2 to a rover (GPS is installed on the vehicle)
 		RoverWithMovingBaseUART1, ///< expect RTCM input on UART1 from a moving base for heading output
 		MovingBaseUART1,          ///< RTCM output on UART1 to a rover (GPS is installed on the vehicle)
+		RoverWithStaticBaseUart2,  ///< expect RTCM input on UART2 from a static base.
 	};
 
 	GPSDriverUBX(Interface gpsInterface, GPSCallbackPtr callback, void *callback_user,
 		     sensor_gps_s *gps_position, satellite_info_s *satellite_info,
 		     uint8_t dynamic_model = 7,
 		     float heading_offset = 0.f,
+		     int32_t uart2_baudrate = 57600,
 		     UBXMode mode = UBXMode::Normal);
 
 	virtual ~GPSDriverUBX();
@@ -938,6 +960,7 @@ public:
 		u_blox8 = 8, ///< M8N or M8P
 		u_blox9 = 9, ///< M9N, or any F9*, except F9P
 		u_blox9_F9P = 10, ///< F9P
+		u_blox10 = 11,
 	};
 
 	const Board &board() const { return _board; }
@@ -974,10 +997,11 @@ private:
 
 	/**
 	 * Send configuration values and desired message rates
-	 * @param gnssSystems Set of GNSS systems to use
+	 * @param config The configuration includes GNSS systems to use and protocol for interfaces
+	 * @param uart2_baudrate Baudrate of F9P's UART2 port
 	 * @return 0 on success, <0 on error
 	 */
-	int configureDevice(const GNSSSystemsMask &gnssSystems);
+	int configureDevice(const GPSConfig &config, const int32_t uart2_baudrate);
 	/**
 	 * Send configuration values and desired message rates (for protocol version < 27)
 	 * @param gnssSystems Set of GNSS systems to use
@@ -1107,6 +1131,7 @@ private:
 
 	const UBXMode _mode;
 	const float _heading_offset;
+	const int32_t _uart2_baudrate;
 };
 
 

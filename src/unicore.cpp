@@ -74,6 +74,7 @@ UnicoreParser::Result UnicoreParser::parseChar(char c)
 			_buffer_crc[_buffer_crc_pos] = '\0';
 
 			if (!crcCorrect()) {
+				reset();
 				return Result::WrongCrc;
 			}
 
@@ -178,5 +179,56 @@ bool UnicoreParser::extractHeading()
 
 bool UnicoreParser::extractAgrica()
 {
-	return true;
+	// Skip to ;
+	char *ptr = strchr(_buffer, ';');
+
+	if (ptr == nullptr) {
+		return false;
+	}
+
+	ptr = strtok(ptr, ",");
+
+	unsigned i = 0;
+
+	while (ptr != nullptr) {
+		ptr = strtok(nullptr, ",");
+
+		if (ptr == nullptr) {
+			return false;
+		}
+
+		if (i == 21) {
+			_agrica.velocity_m_s = strtof(ptr, nullptr);
+		}
+
+		else if (i == 22) {
+			_agrica.velocity_north_m_s = strtof(ptr, nullptr);
+		}
+
+		else if (i == 23) {
+			_agrica.velocity_east_m_s = strtof(ptr, nullptr);
+		}
+
+		else if (i == 24) {
+			_agrica.velocity_up_m_s = strtof(ptr, nullptr);
+		}
+
+		else if (i == 25) {
+			_agrica.stddev_velocity_north_m_s = strtof(ptr, nullptr);
+		}
+
+		else if (i == 26) {
+			_agrica.stddev_velocity_east_m_s = strtof(ptr, nullptr);
+		}
+
+		else if (i == 27) {
+			_agrica.stddev_velocity_up_m_s = strtof(ptr, nullptr);
+			_agrica_valid = true;
+			return true;
+		}
+
+		++i;
+	}
+
+	return false;
 }

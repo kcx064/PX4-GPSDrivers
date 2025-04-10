@@ -53,8 +53,9 @@ public:
 
 	/**
 	 * add a byte to the message
-	 * @param b
-	 * @return true if message complete (use @message to get it)
+	 * @param b byte to add
+	 * @return true, if a message is complete (use @message to get it). The user needs to reset the parser in this case.
+	 * 	false, if more data is needed or the parser failed. In this case no resetting of the parser is needed.
 	 */
 	bool addByte(uint8_t b);
 
@@ -63,8 +64,11 @@ public:
 	uint16_t messageId() const { return (_buffer[3] << 4) | (_buffer[4] >> 4); }
 
 private:
+	uint32_t crc24(const uint8_t *buffer, const uint16_t len);
+
 	uint8_t			*_buffer{nullptr};
 	uint16_t		_buffer_len{};
 	uint16_t		_pos{};						///< next position in buffer
-	uint16_t		_message_length{};					///< message length without header & CRC (both 3 bytes)
+	uint16_t		_message_length{};				///< message length without header & CRC (both 3 bytes)
+	bool			_preamble_received{false};
 };

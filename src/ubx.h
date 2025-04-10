@@ -719,6 +719,7 @@ typedef struct {
 	uint8_t  flags;
 	uint16_t subType;
 	uint16_t refStationID;
+	uint16_t msgType;
 } ubx_payload_rx_rxm_rtcm_t;
 
 /* Rx ACK-ACK */
@@ -956,8 +957,6 @@ typedef enum {
 	UBX_DECODE_PAYLOAD,
 	UBX_DECODE_CHKSUM1,
 	UBX_DECODE_CHKSUM2,
-
-	UBX_DECODE_RTCM3
 } ubx_decode_state_t;
 
 /* Rx message state */

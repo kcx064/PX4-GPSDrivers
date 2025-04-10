@@ -310,6 +310,13 @@ GPSDriverUBX::configure(unsigned &baudrate, const GPSConfig &config)
 		}
 	}
 
+	if (_output_mode == OutputMode::GPSAndRTCM || _output_mode == OutputMode::RTCM || _mode == UBXMode::MovingBaseUART1) {
+		if (!_rtcm_parsing) {
+			_rtcm_parsing = new RTCMParsing();
+		}
+
+		_rtcm_parsing->reset();
+	}
 
 	if (_output_mode == OutputMode::RTCM) {
 		// RTCM mode force stationary dynamic model
@@ -1198,6 +1205,15 @@ GPSDriverUBX::parseChar(const uint8_t b)
 {
 	int ret = 0;
 
+	if (_rtcm_parsing) {
+		if (_rtcm_parsing->addByte(b)) {
+			gotRTCMMessage(_rtcm_parsing->message(), _rtcm_parsing->messageLength());
+			decodeInit();
+			_rtcm_parsing->reset();
+			return ret;
+		}
+	}
+
 	switch (_decode_state) {
 
 	/* Expecting Sync1 */
@@ -1205,11 +1221,6 @@ GPSDriverUBX::parseChar(const uint8_t b)
 		if (b == UBX_SYNC1) {	// Sync1 found --> expecting Sync2
 			UBX_TRACE_PARSER("A");
 			_decode_state = UBX_DECODE_SYNC2;
-
-		} else if (b == RTCM3_PREAMBLE && _rtcm_parsing) {
-			UBX_TRACE_PARSER("RTCM");
-			_decode_state = UBX_DECODE_RTCM3;
-			_rtcm_parsing->addByte(b);
 		}
 
 		break;
@@ -1323,18 +1334,13 @@ GPSDriverUBX::parseChar(const uint8_t b)
 
 		} else {
 			ret = payloadRxDone();	// finish payload processing
+
+			if (_rtcm_parsing) {
+				_rtcm_parsing->reset();
+			}
 		}
 
 		decodeInit();
-		break;
-
-	case UBX_DECODE_RTCM3:
-		if (_rtcm_parsing->addByte(b)) {
-			//UBX_DEBUG("got RTCM message with length %i", static_cast<int>(_rtcm_parsing->messageLength()));
-			gotRTCMMessage(_rtcm_parsing->message(), _rtcm_parsing->messageLength());
-			decodeInit();
-		}
-
 		break;
 
 	default:
@@ -1528,7 +1534,7 @@ GPSDriverUBX::payloadRxInit()
 		break;
 
 	case UBX_MSG_RXM_RTCM:
-		if (_rx_payload_length < sizeof(ubx_payload_rx_rxm_rtcm_t)) {
+		if (_rx_payload_length != sizeof(ubx_payload_rx_rxm_rtcm_t)) {
 			_rx_state = UBX_RXMSG_ERROR_LENGTH;
 
 		} else if (!_configured) {
@@ -2488,16 +2494,6 @@ GPSDriverUBX::decodeInit()
 	_rx_ck_b = 0;
 	_rx_payload_length = 0;
 	_rx_payload_index = 0;
-
-	if (_output_mode == OutputMode::GPSAndRTCM || _output_mode == OutputMode::RTCM || _mode == UBXMode::MovingBaseUART1) {
-		if (!_rtcm_parsing) {
-			_rtcm_parsing = new RTCMParsing();
-		}
-
-		if (_rtcm_parsing) {
-			_rtcm_parsing->reset();
-		}
-	}
 }
 
 void

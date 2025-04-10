@@ -218,6 +218,14 @@ int GPSDriverSBF::configure(unsigned &baudrate, const GPSConfig &config)
 		}
 	} while (i < 5 && !response_detected);
 
+	if (_output_mode == OutputMode::GPSAndRTCM || _output_mode == OutputMode::RTCM) {
+		if (!_rtcm_parsing) {
+			_rtcm_parsing = new RTCMParsing();
+		}
+
+		_rtcm_parsing->reset();
+	}
+
 	if (_output_mode == OutputMode::RTCM) {
 		if (_base_settings.type == BaseSettingsType::fixed_position) {
 			snprintf(msg, sizeof(msg), SBF_CONFIG_RTCM_STATIC_COORDINATES,
@@ -355,6 +363,16 @@ int GPSDriverSBF::parseChar(const uint8_t b)
 {
 	int ret = 0;
 
+	if (_rtcm_parsing) {
+		if (_rtcm_parsing->addByte(b)) {
+			SBF_DEBUG("got RTCM message with length %i", (int) _rtcm_parsing->messageLength());
+			gotRTCMMessage(_rtcm_parsing->message(), _rtcm_parsing->messageLength());
+			decodeInit();
+			_rtcm_parsing->reset();
+			return ret;
+		}
+	}
+
 	switch (_decode_state) {
 
 	// Expecting Sync1
@@ -363,11 +381,6 @@ int GPSDriverSBF::parseChar(const uint8_t b)
 			SBF_TRACE_PARSER("A");
 			payloadRxAdd(b); // add a payload byte
 			_decode_state = SBF_DECODE_SYNC2;
-
-		} else if (b == RTCM3_PREAMBLE && _rtcm_parsing) {
-			SBF_TRACE_PARSER("RTCM");
-			_decode_state = SBF_DECODE_RTCM3;
-			_rtcm_parsing->addByte(b);
 		}
 
 		break;
@@ -397,23 +410,16 @@ int GPSDriverSBF::parseChar(const uint8_t b)
 
 		} else if (ret > 0) {
 			ret = payloadRxDone(); // finish payload processing
+
+			if (_rtcm_parsing) {
+				_rtcm_parsing->reset();
+			}
+
 			decodeInit();
 
 		} else {
 			// expecting more payload, stay in state SBF_DECODE_PAYLOAD
 			ret = 0;
-
-		}
-
-		break;
-
-	case SBF_DECODE_RTCM3:
-		if (_rtcm_parsing->addByte(b)) {
-			// Complete message received
-			SBF_DEBUG("got RTCM message with length %i", (int) _rtcm_parsing->messageLength());
-			gotRTCMMessage(_rtcm_parsing->message(), _rtcm_parsing->messageLength());
-			decodeInit();
-			ret |= 1;
 		}
 
 		break;
@@ -694,16 +700,6 @@ void GPSDriverSBF::decodeInit()
 {
 	_decode_state = SBF_DECODE_SYNC1;
 	_rx_payload_index = 0;
-
-	if (_output_mode == OutputMode::GPSAndRTCM || _output_mode == OutputMode::RTCM) {
-		if (!_rtcm_parsing) {
-			_rtcm_parsing = new RTCMParsing();
-		}
-
-		if (_rtcm_parsing) {
-			_rtcm_parsing->reset();
-		}
-	}
 }
 
 int GPSDriverSBF::reset(GPSRestartType restart_type)

@@ -913,6 +913,7 @@ int GPSDriverNMEA::handleMessage(int len)
 	/** update the stats for the velocity. */
 	if (_VEL_received) {
 		ret = 1;
+		_gps_position->timestamp_time_relative = (int32_t)(_last_timestamp_time - _gps_position->timestamp);
 		_VEL_received = false;
 		_rate_count_vel++;
 	}
@@ -959,7 +960,7 @@ int GPSDriverNMEA::receive(unsigned timeout)
 				UnicoreParser::Result result = _unicore_parser.parseChar(buf[i]);
 
 				if (result == UnicoreParser::Result::GotHeading) {
-					++handled;
+					handled |= 2;
 					_unicore_heading_received_last = gps_absolute_time();
 
 					// Unicore seems to publish heading and standard deviation of 0

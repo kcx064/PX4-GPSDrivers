@@ -100,7 +100,7 @@
 #define UBX_ID_CFG_PRT        0x00 // deprecated in protocol version >= 27 -> use CFG_VALSET
 #define UBX_ID_CFG_MSG        0x01 // deprecated in protocol version >= 27 -> use CFG_VALSET
 #define UBX_ID_CFG_RATE       0x08 // deprecated in protocol version >= 27 -> use CFG_VALSET
-#define UBX_ID_CFG_CFG        0x09 // deprecated in protocol version >= 27 -> use CFG_VALSET
+#define UBX_ID_CFG_CFG        0x09 // deprecated in protocol version >= 27 for individual config (not for global clear/save/load)
 #define UBX_ID_CFG_NAV5       0x24 // deprecated in protocol version >= 27 -> use CFG_VALSET
 #define UBX_ID_CFG_RST        0x04
 #define UBX_ID_CFG_SBAS       0x16
@@ -408,10 +408,13 @@
 #define UBX_CFG_KEY_SIGNAL_GAL_E1_ENA           0x10310007  /**< Galileo E1 */
 #define UBX_CFG_KEY_SIGNAL_GAL_E5B_ENA          0x1031000a  /**< Galileo E5b (only on u-blox F9 platform products) */
 #define UBX_CFG_KEY_SIGNAL_GAL_E5A_ENA          0x10310009  /**< Galileo E5a (only on u-blox F9-15B) */
+#define UBX_CFG_KEY_SIGNAL_GAL_E6_ENA           0x1031000b  /**< Galileo E6 (only on u-blox F9-15B and X20) */
 #define UBX_CFG_KEY_SIGNAL_BDS_ENA              0x10310022  /**< BeiDou Enable */
 #define UBX_CFG_KEY_SIGNAL_BDS_B1_ENA           0x1031000d  /**< BeiDou B1I */
+#define UBX_CFG_KEY_SIGNAL_BDS_B1C_ENA          0x1031000f  /**< BeiDou B1C (only on u-blox F9-15B) */
 #define UBX_CFG_KEY_SIGNAL_BDS_B2A_ENA          0x10310028  /**< BeiDou B2a  (only on u-blox F9-15B) */
 #define UBX_CFG_KEY_SIGNAL_BDS_B2_ENA           0x1031000e  /**< BeiDou B2I (only on u-blox F9 platform products) */
+#define UBX_CFG_KEY_SIGNAL_BDS_B3_ENA           0x10310010  /**< BeiDou B3I (only on u-blox F9-15B) */
 #define UBX_CFG_KEY_SIGNAL_QZSS_ENA             0x10310024  /**< QZSS enable */
 #define UBX_CFG_KEY_SIGNAL_QZSS_L1CA_ENA        0x10310012  /**< QZSS L1C/A */
 #define UBX_CFG_KEY_SIGNAL_QZSS_L1S_ENA         0x10310014  /**< QZSS L1S */
@@ -985,14 +988,20 @@ public:
 		RoverWithMovingBaseUART1, ///< expect RTCM input on UART1 from a moving base for heading output
 		MovingBaseUART1,          ///< RTCM output on UART1 to a rover (GPS is installed on the vehicle)
 		RoverWithStaticBaseUart2,  ///< expect RTCM input on UART2 from a static base.
+		GroundControlStation, ///< NMEA output on UART2 to a ground control station (GPS is installed in GCS)
+	};
+
+	struct Settings {
+		uint8_t dynamic_model;
+		float heading_offset;
+		int32_t uart2_baudrate;
+		bool ppk_output;
+		UBXMode mode;
 	};
 
 	GPSDriverUBX(Interface gpsInterface, GPSCallbackPtr callback, void *callback_user,
 		     sensor_gps_s *gps_position, satellite_info_s *satellite_info,
-		     uint8_t dynamic_model = 7,
-		     float heading_offset = 0.f,
-		     int32_t uart2_baudrate = 57600,
-		     UBXMode mode = UBXMode::Normal);
+		     Settings settings);
 
 	virtual ~GPSDriverUBX();
 
@@ -1000,7 +1009,7 @@ public:
 	int receive(unsigned timeout) override;
 	int reset(GPSRestartType restart_type) override;
 
-	bool shouldInjectRTCM() override { return _mode != UBXMode::RoverWithMovingBase; }
+	bool shouldInjectRTCM() override { return _configured && _mode != UBXMode::RoverWithMovingBase; }
 
 	enum class Board : uint8_t {
 		unknown = 0,
@@ -1012,6 +1021,8 @@ public:
 		u_blox9_F9P_L1L2 = 10, ///< F9P
 		u_blox10 = 11,
 		u_blox9_F9P_L1L5 = 12, ///< ZED-F9P-15B
+		u_blox10_L1L5 = 13, ///< DAN-F10N
+		u_blox_X20 = 14,
 	};
 
 	const Board &board() const { return _board; }
@@ -1177,9 +1188,10 @@ private:
 
 	RTCMParsing *_rtcm_parsing{nullptr};
 
-	const UBXMode _mode;
-	const float _heading_offset;
-	const int32_t _uart2_baudrate;
+	const UBXMode _mode {};
+	const float _heading_offset {};
+	const int32_t _uart2_baudrate {};
+	const bool _ppk_output {};
 };
 
 

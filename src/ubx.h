@@ -328,6 +328,9 @@
 #define UBX_CFG_KEY_NAVSPG_FIXMODE              0x20110011
 #define UBX_CFG_KEY_NAVSPG_UTCSTANDARD          0x2011001c
 #define UBX_CFG_KEY_NAVSPG_DYNMODEL             0x20110021
+#define UBX_CFG_KEY_NAVSPG_INFIL_MINCNO         0x201100a3
+#define UBX_CFG_KEY_NAVSPG_INFIL_MINELEV        0x201100a4
+#define UBX_CFG_KEY_NAVSPG_CONSTR_DGNSSTO       0x201100c4
 
 #define UBX_CFG_KEY_ODO_USE_ODO                 0x10220001
 #define UBX_CFG_KEY_ODO_USE_COG                 0x10220002
@@ -335,6 +338,8 @@
 #define UBX_CFG_KEY_ODO_OUTLPCOG                0x10220004
 
 #define UBX_CFG_KEY_ITFM_ENABLE                 0x1041000d
+
+#define UBX_CFG_KEY_SEC_JAMDET_SENSITIVITY_HI   0x10f60051
 
 #define UBX_CFG_KEY_RATE_MEAS                   0x30210001
 #define UBX_CFG_KEY_RATE_NAV                    0x30210002
@@ -993,9 +998,14 @@ public:
 
 	struct Settings {
 		uint8_t dynamic_model;
+		uint8_t dgnss_timeout;
+		uint8_t min_cno;
+		int8_t min_elev;
+		uint8_t output_rate;
 		float heading_offset;
 		int32_t uart2_baudrate;
 		bool ppk_output;
+		bool jam_det_sensitivity_hi;
 		UBXMode mode;
 	};
 
@@ -1172,6 +1182,11 @@ private:
 	uint8_t _rx_ck_a{0};
 	uint8_t _rx_ck_b{0};
 	uint8_t _dyn_model{7};  ///< ublox Dynamic platform model default 7: airborne with <2g acceleration
+	uint8_t _dgnss_timeout{0}; ///< ublox DGNSS timeout.
+	uint8_t _min_cno{0};  ///< ublox minimum satellite signal level for navigation
+
+	int8_t _min_elev{0};  ///< ublox minimum elevation for a GNSS satellite to be used in navigation
+	uint8_t _output_rate{0};  ///< ublox output rate in Hz, 0 = auto-select based on module
 
 	uint16_t _ack_waiting_msg{0};
 	uint16_t _rx_msg{};
@@ -1192,6 +1207,7 @@ private:
 	const float _heading_offset {};
 	const int32_t _uart2_baudrate {};
 	const bool _ppk_output {};
+	const bool _jam_det_sensitivity_hi {};
 };
 
 
